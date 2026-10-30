@@ -1,0 +1,30 @@
+name: publish
+
+on:
+  push:
+    tags: ["v*"]
+  release:
+    types: [published]
+  workflow_dispatch:
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    # Must match the "Environment name" of the PyPI pending publisher
+    # (leave both empty, or set both to "pypi").
+    environment: pypi
+    permissions:
+      id-token: write # required for Trusted Publishing (OIDC)
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Build sdist and wheel
+        run: uv build
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
