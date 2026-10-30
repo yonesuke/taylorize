@@ -1,5 +1,10 @@
 # taylorize
 
+[![PyPI](https://img.shields.io/pypi/v/taylorize)](https://pypi.org/project/taylorize/)
+[![Python versions](https://img.shields.io/pypi/pyversions/taylorize)](https://pypi.org/project/taylorize/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![publish](https://github.com/yonesuke/taylorize/actions/workflows/publish.yml/badge.svg)](https://github.com/yonesuke/taylorize/actions/workflows/publish.yml)
+
 Lazy truncated Taylor series for **higher-order automatic differentiation** and
 **arbitrary-precision Taylor-method ODE integration**.
 
@@ -7,12 +12,15 @@ Lazy truncated Taylor series for **higher-order automatic differentiation** and
 `c[k] = x^(k)(0) / k!` and computes them **lazily**, so you can build an
 expression once and then ask for any order afterwards.
 
-> Status: **0.0.1 (pre-alpha seed)**. The API is minimal and will change.
+> Status: **0.0.1 (pre-alpha seed)**, published on [PyPI](https://pypi.org/project/taylorize/).
+> The API is minimal and will change.
 
 ## Install
 
 ```bash
 pip install taylorize
+# or
+uv add taylorize
 ```
 
 ## Quickstart
