@@ -1,0 +1,39 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "taylorize"
+version = "0.0.1"
+description = "Lazy truncated Taylor series: higher-order automatic differentiation and arbitrary-precision Taylor-method ODE integration."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Ryosuke Yoneda" }]
+keywords = [
+  "automatic-differentiation",
+  "taylor-series",
+  "higher-order",
+  "ode",
+  "arbitrary-precision",
+]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Topic :: Scientific/Engineering :: Mathematics",
+]
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/yonesuke/taylorize"
+Repository = "https://github.com/yonesuke/taylorize"
+Issues = "https://github.com/yonesuke/taylorize/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/taylorize"]
+
+[dependency-groups]
+dev = ["pytest>=8"]
