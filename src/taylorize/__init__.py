@@ -1,27 +1,32 @@
 """taylorize — lazy truncated Taylor series for higher-order automatic
-differentiation and Taylor-method ODE integration.
+differentiation.
 
-A :class:`Taylor` is the normalized Taylor polynomial of a smooth function
-around a point.  Higher-order coefficients are computed lazily, so arbitrary
-orders can be requested *after* the expression has been built.
+Architecture (one-way dependencies; see docs/design/ode-defined-functions.md):
 
-This is the minimal 0.0.1 seed of the project.
+- :mod:`taylorize.core` -- the minimal lazy power-series ring plus the
+  ``bind_ode`` wiring primitive.  No functions, no backends, no host hooks.
+- :mod:`taylorize.functions` -- every elementary/special function,
+  declared by the ODE it satisfies and built with ``bind_ode``.
+- :mod:`taylorize.backends` -- how initial (0th-order) values are
+  obtained per coefficient backend (float/math, mpmath, sympy, exact).
+- :mod:`taylorize.transforms` -- ``derivative`` / ``taylor_series``.
+- :mod:`taylorize.interop` -- numpy/torch protocol dispatch dynamically wired.
 """
-from .core import (
-    Taylor,
-    constant,
+from . import interop as _interop  # noqa: F401  (registers host-library interop hooks)
+from .core import Taylor, constant, variable
+from .functions import (
+    asin,
+    atan,
     cos,
-    derivative,
+    erf,
     exp,
     log,
-    ode_step,
     power,
     sin,
     sqrt,
     tan,
-    taylor_series,
-    variable,
 )
+from .transforms import derivative, taylor_series
 
 __version__ = "0.0.1"
 
@@ -36,7 +41,9 @@ __all__ = [
     "tan",
     "sqrt",
     "power",
+    "asin",
+    "atan",
+    "erf",
     "derivative",
     "taylor_series",
-    "ode_step",
 ]

@@ -1,37 +1,39 @@
-"""Core: a small, dependency-free truncated Taylor series type.
+"""Core: the minimal lazy Taylor ring.
 
-A :class:`Taylor` represents the normalized Taylor polynomial of a smooth
-function ``x(t)`` around ``t = 0``::
+This module knows *nothing* about elementary or special functions,
+host-library interop, or coefficient backends.  It provides exactly:
 
-    x(t) = c[0] + c[1] t + c[2] t^2 + ...
+- the ring operations of formal power series (``+``, ``-``, ``*``, and
+  division by a unit series, which is part of the ring structure),
+- the formal derivative :meth:`Taylor.diff` and Picard integral
+  :meth:`Taylor.integrate`,
+- the ODE wiring primitive :meth:`Taylor.bind_ode`, from which every
+  function in :mod:`taylorize.functions` is built,
+- a *pending* state: a Taylor whose coefficients must not be read until
+  its ODE has been wired (reading raises instead of silently returning 0).
 
-with ``c[k] = x^(k)(0) / k!``.  Higher-order coefficients are produced lazily
-from a recurrence rule, so any order can be requested after the fact.
+Coefficients are opaque objects; the core only assumes they support
+``+``, ``*`` and division by (small) integers.  ``float``, ``Fraction``,
+``mpmath``, ``sympy`` and array scalars all qualify.
 """
 from __future__ import annotations
 
 import math
 from typing import Callable, List, Optional
 
-__all__ = [
-    "Taylor",
-    "variable",
-    "constant",
-    "exp",
-    "log",
-    "sin",
-    "cos",
-    "tan",
-    "sqrt",
-    "power",
-    "derivative",
-    "taylor_series",
-    "ode_step",
-]
+__all__ = ["Taylor", "variable", "constant"]
+
+
+def _pending_rule(k: int):
+    raise RuntimeError(
+        "Taylor coefficients were read before bind_ode() wired the ODE. "
+        "This usually means a coupled system was evaluated during construction."
+    )
 
 
 class Taylor:
-    """A truncated Taylor polynomial with lazily computed coefficients."""
+    """A lazy truncated Taylor series ``x(h) = sum_k c[k] h^k``,
+    ``c[k] = x^(k)(0) / k!``, with coefficients produced on demand."""
 
     __slots__ = ("c", "_rule")
 
@@ -47,6 +49,22 @@ class Taylor:
             self._rule = _rule
         if not self.c:
             raise ValueError("Taylor needs at least one coefficient.")
+
+    # -- construction --------------------------------------------------------
+    @classmethod
+    def pending(cls, primal) -> "Taylor":
+        """A Taylor with a known constant term whose ODE is not wired yet.
+
+        Reading any higher coefficient raises until :meth:`bind_ode` is
+        called.  Coupled systems are built by creating pending states,
+        forming their derivative expressions, and then wiring them.
+        """
+        return cls([primal], _rule=_pending_rule)
+
+    def bind_ode(self, dy: "Taylor") -> "Taylor":
+        """Wire the ODE ``y' = dy`` to this series: ``c[k] = dy[k-1] / k``."""
+        self._rule = lambda k: dy.coeff(k - 1) / k
+        return self
 
     # -- coefficient access --------------------------------------------------
     @property
@@ -103,26 +121,24 @@ class Taylor:
         return self.coeff(k) * math.factorial(k)
 
     def diff(self) -> "Taylor":
-        """Formal derivative ``x'(t)`` as a new lazy Taylor."""
+        """Formal derivative ``x'(h)`` as a new lazy Taylor."""
         return Taylor([self.coeff(1)], _rule=lambda k: (k + 1) * self.coeff(k + 1))
 
     def integrate(self, c0=0) -> "Taylor":
-        """Formal integral with constant term ``c0``."""
-        return Taylor([c0], _rule=lambda k: self.coeff(k - 1) / k)
+        """Formal integral with constant term ``c0`` (Picard operator)."""
+        return Taylor([c0]).bind_ode(self)
 
     def __repr__(self) -> str:
         return "Taylor([%s])" % ", ".join(repr(v) for v in self.c)
 
-    # -- arithmetic ----------------------------------------------------------
+    # -- ring arithmetic -------------------------------------------------------
     def __add__(self, other):
         if not isinstance(other, Taylor):
             return Taylor([self.c[0] + other], _rule=lambda k: self.coeff(k))
-        out = Taylor(
+        return Taylor(
             [self.primal + other.primal],
             _rule=lambda k: self.coeff(k) + other.coeff(k),
         )
-        out.ensure(max(self.order, other.order))
-        return out
 
     __radd__ = __add__
 
@@ -138,18 +154,18 @@ class Taylor:
     def __mul__(self, other):
         if not isinstance(other, Taylor):
             return Taylor([self.primal * other], _rule=lambda k: self.coeff(k) * other)
-        out = Taylor(
+        return Taylor(
             [self.primal * other.primal],
             _rule=lambda k: sum(
                 self.coeff(j) * other.coeff(k - j) for j in range(k + 1)
             ),
         )
-        out.ensure(max(self.order, other.order))
-        return out
 
     __rmul__ = __mul__
 
     def __truediv__(self, other):
+        # Division by a unit series is part of the power-series ring:
+        # it uses only ring operations, so it belongs to the core.
         if not isinstance(other, Taylor):
             if other == 0:
                 raise ZeroDivisionError("division of Taylor by zero")
@@ -162,66 +178,32 @@ class Taylor:
             self.coeff(k)
             - sum(other.coeff(j) * out.coeff(k - j) for j in range(1, k + 1))
         ) / y0
-        out.ensure(max(self.order, other.order))
         return out
 
     def __rtruediv__(self, other):
         return _as_taylor(other) / self
 
     def __pow__(self, p):
+        if isinstance(p, int):
+            if p == 0:
+                return constant(1, order=self.order)
+            if p < 0:
+                return constant(1) / (self ** (-p))
+            result, base, e = constant(1), self, p
+            while e:
+                if e & 1:
+                    result = result * base
+                base = base * base
+                e >>= 1
+            return result
+        # Non-integer / Taylor exponents are functions, not ring operations:
+        # they live in taylorize.functions (deferred import, no cycle).
+        from .functions import power
+
         return power(self, p)
 
-    # -- elementary functions ------------------------------------------------
-    def exp(self) -> "Taylor":
-        out = Taylor([math.exp(self.primal)])
-        out._rule = (
-            lambda k: sum(j * self.coeff(j) * out.coeff(k - j) for j in range(1, k + 1))
-            / k
-        )
-        out.ensure(self.order)
-        return out
 
-    def log(self) -> "Taylor":
-        x0 = self.primal
-        if x0 <= 0:
-            raise ValueError("log requires a positive constant term.")
-        out = Taylor([math.log(x0)])
-        out._rule = lambda k: (
-            self.coeff(k)
-            - sum(j * out.coeff(j) * self.coeff(k - j) for j in range(1, k)) / k
-        ) / x0
-        out.ensure(self.order)
-        return out
-
-    def sqrt(self) -> "Taylor":
-        return power(self, 0.5)
-
-    def sin_cos(self):
-        s = Taylor([math.sin(self.primal)])
-        c = Taylor([math.cos(self.primal)])
-        s._rule = (
-            lambda k: sum(j * self.coeff(j) * c.coeff(k - j) for j in range(1, k + 1))
-            / k
-        )
-        c._rule = (
-            lambda k: -sum(j * self.coeff(j) * s.coeff(k - j) for j in range(1, k + 1))
-            / k
-        )
-        s.ensure(self.order)
-        c.ensure(self.order)
-        return s, c
-
-    def sin(self) -> "Taylor":
-        return self.sin_cos()[0]
-
-    def cos(self) -> "Taylor":
-        return self.sin_cos()[1]
-
-    def tan(self) -> "Taylor":
-        return self.sin() / self.cos()
-
-
-# -- helpers -----------------------------------------------------------------
+# -- helpers -------------------------------------------------------------------
 def _as_taylor(x) -> Taylor:
     return x if isinstance(x, Taylor) else Taylor([x])
 
@@ -239,107 +221,3 @@ def constant(c, order: Optional[int] = None) -> Taylor:
     if order:
         t.ensure(order)
     return t
-
-
-def power(x, p) -> Taylor:
-    """``x ** p`` for a Taylor base and scalar (or Taylor) exponent."""
-    if isinstance(p, Taylor):
-        return (p * x.log()).exp()
-    if not isinstance(x, Taylor):
-        return x ** p
-    if isinstance(p, int):
-        if p == 0:
-            return constant(1, order=x.order)
-        if p < 0:
-            return constant(1) / power(x, -p)
-        result = constant(1)
-        base = x
-        e = p
-        while e:
-            if e & 1:
-                result = result * base
-            base = base * base
-            e >>= 1
-        return result
-    x0 = x.primal
-    p_plus_1 = p + 1
-    out = Taylor([x0 ** p])
-    out._rule = lambda k: (
-        sum((j * p_plus_1 - k) * x.coeff(j) * out.coeff(k - j) for j in range(1, k + 1))
-        / (k * x0)
-    )
-    out.ensure(x.order)
-    return out
-
-
-def exp(x):
-    return _as_taylor(x).exp()
-
-
-def log(x):
-    return _as_taylor(x).log()
-
-
-def sqrt(x):
-    return _as_taylor(x).sqrt()
-
-
-def sin(x):
-    return _as_taylor(x).sin()
-
-
-def cos(x):
-    return _as_taylor(x).cos()
-
-
-def tan(x):
-    return _as_taylor(x).tan()
-
-
-# -- JAX-style transforms ----------------------------------------------------
-def derivative(f: Callable, k: int = 1) -> Callable:
-    """Transform ``f`` into a function returning its ``k``-th derivative."""
-    if k < 0:
-        raise ValueError("k must be >= 0")
-
-    def grad_k(x0):
-        return f(variable(x0, order=k)).derivative(k)
-
-    grad_k.__name__ = getattr(f, "__name__", "grad_k")
-    return grad_k
-
-
-def taylor_series(f: Callable, order: int) -> Callable:
-    """Transform ``f`` into a function returning ``[c_0, ..., c_order]``."""
-    if order < 0:
-        raise ValueError("order must be >= 0")
-
-    def series_fn(x0):
-        return list(f(variable(x0, order=order)).ensure(order).c)
-
-    series_fn.__name__ = getattr(f, "__name__", "series_fn")
-    return series_fn
-
-
-def ode_step(f: Callable, order: int = 10) -> Callable:
-    """Transform a vector field ``f`` into an ``order``-th Taylor step.
-
-    The returned function ``step(x, dt, t=0.0)`` advances the state ``x``
-    (a scalar or a sequence) by a single Taylor-method step of size ``dt``.
-    The vector field is evaluated once per step on lazy Taylor jets.
-    """
-    if order < 1:
-        raise ValueError("order must be >= 1")
-
-    def step(x, dt, t=0.0):
-        scalar = not isinstance(x, (list, tuple))
-        xs = [x] if scalar else list(x)
-        jets = [Taylor([v]) for v in xs]
-        rhs = [f(jets[0])] if scalar else list(f(jets))
-        for jet, r in zip(jets, rhs):
-            jet._rule = (lambda k, r=r: r.coeff(k - 1) / k)
-        out = [jet.eval(dt, order=order) for jet in jets]
-        return out[0] if scalar else out
-
-    step.__name__ = "step"
-    return step
