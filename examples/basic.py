@@ -1,4 +1,4 @@
-"""Minimal examples for taylorize 0.0.1.
+"""Minimal examples for taylorize 0.0.2.
 
 Run with::
 

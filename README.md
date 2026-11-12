@@ -12,7 +12,7 @@ Lazy truncated Taylor series for **higher-order automatic differentiation** and
 `c[k] = x^(k)(0) / k!` and computes them **lazily**, so you can build an
 expression once and then ask for any order afterwards.
 
-> Status: **0.0.1 (pre-alpha seed)**, published on [PyPI](https://pypi.org/project/taylorize/).
+> Status: **0.0.2 (pre-alpha seed)**, published on [PyPI](https://pypi.org/project/taylorize/).
 > The API is minimal and will change.
 
 ## Install

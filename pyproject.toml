@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "taylorize"
-version = "0.0.1"
+version = "0.0.2"
 description = "Lazy truncated Taylor series: higher-order automatic differentiation and arbitrary-precision Taylor-method ODE integration."
 readme = "README.md"
 requires-python = ">=3.9"
