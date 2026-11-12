@@ -36,6 +36,7 @@ class Taylor:
     ``c[k] = x^(k)(0) / k!``, with coefficients produced on demand."""
 
     __slots__ = ("c", "_rule")
+    __iter__ = None
 
     def __init__(self, coeffs, _rule: Optional[Callable[[int], object]] = None) -> None:
         if isinstance(coeffs, Taylor):

@@ -25,31 +25,37 @@ uv add taylorize
 
 ## Quickstart
 
+Use your existing **NumPy** or **mpmath** functions directly—no need to import `sin` or `exp` from `taylorize`:
+
 ```python
-from fractions import Fraction
-from taylorize import Taylor, derivative, taylor_series, variable, exp, sin, tan
-from taylorize.functions import define_ode_function
+import numpy as np
+from taylorize import Taylor, derivative, taylor_series
 
-def f(x):
-    return exp(sin(x))
+# 5th derivative of np.exp(np.sin(x)) at 0
+print(derivative(lambda x: np.exp(np.sin(x)), k=5)(0.0))  # -8.0
 
-# 5th derivative of exp(sin(x)) at 0
-print(derivative(f, k=5)(0.0))          # -8.0
+# Normalized Taylor coefficients of np.sin(x) up to order 9
+print(taylor_series(np.sin, order=9)(0.0))  # [0.0, 1.0, 0.0, -1/6, ...]
 
-# Exact rational Taylor coefficients of tan(x) up to order 7
-print(tan(variable(Fraction(0))).ensure(7).c)
-# [Fraction(0, 1), Fraction(1, 1), Fraction(0, 1), Fraction(1, 3), ...]
-
-# Define any function by the ODE it satisfies: y' = y(1 - y), y(0) = 1/2
-logistic = define_ode_function(lambda x, y: y * (1 - y), lambda x0: 0.5)
-print(taylor_series(logistic, order=5)(0.0))
-
-# Integrate a coupled ODE system (simple pendulum: theta'' = -sin(theta))
-theta = Taylor.pending(1.0)
-omega = Taylor.pending(0.0)
+# Coupled ODE system (simple pendulum: theta'' = -sin(theta))
+theta, omega = Taylor.pending(1.0), Taylor.pending(0.0)
 theta.bind_ode(omega)
-omega.bind_ode(-sin(theta))
+omega.bind_ode(-np.sin(theta))
 print(theta.eval(0.1, order=16))
+```
+
+Arbitrary-precision Taylor expansions with **mpmath**:
+
+```python
+from mpmath import mp
+from taylorize import variable
+
+mp.dps = 50
+x = variable(mp.mpf(0))
+
+# 60th-order Taylor evaluation at x = 0.5 in 50-digit precision
+val = mp.exp(mp.sin(x)).eval(mp.mpf("0.5"), order=60)
+print(abs(val - mp.exp(mp.sin(mp.mpf("0.5")))))  # < 1e-47
 ```
 
 See [`examples/basic.py`](examples/basic.py).

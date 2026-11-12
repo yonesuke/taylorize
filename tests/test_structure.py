@@ -63,11 +63,10 @@ def test_user_defined_function_from_ode():
 def test_mpmath_backend_high_precision():
     mp = pytest.importorskip("mpmath").mp
     mp.dps = 50
-    from taylorize.functions import erf, exp, sin
 
-    val = exp(sin(variable(mp.mpf(0)))).eval(mp.mpf("0.5"), order=60)
+    val = mp.exp(mp.sin(variable(mp.mpf(0)))).eval(mp.mpf("0.5"), order=60)
     assert abs(val - mp.exp(mp.sin(mp.mpf("0.5")))) < mp.mpf("1e-40")
-    assert abs(erf(variable(mp.mpf(0))).eval(mp.mpf(1), order=80) - mp.erf(1)) < mp.mpf("1e-40")
+    assert abs(mp.erf(variable(mp.mpf(0))).eval(mp.mpf(1), order=80) - mp.erf(1)) < mp.mpf("1e-40")
 
 
 def test_sympy_backend_symbolic_coefficients():
