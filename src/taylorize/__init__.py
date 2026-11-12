@@ -14,36 +14,13 @@ Architecture (one-way dependencies; see docs/design/ode-defined-functions.md):
 """
 from . import interop as _interop  # noqa: F401  (registers host-library interop hooks)
 from .core import Taylor, constant, variable
-from .functions import (
-    asin,
-    atan,
-    cos,
-    erf,
-    exp,
-    log,
-    power,
-    sin,
-    sqrt,
-    tan,
-)
+from .functions import asin, atan, cos, erf, exp, log, power, sin, sqrt, tan
 from .transforms import derivative, taylor_series
 
 __version__ = "0.0.1"
 
 __all__ = [
-    "Taylor",
-    "variable",
-    "constant",
-    "exp",
-    "log",
-    "sin",
-    "cos",
-    "tan",
-    "sqrt",
-    "power",
-    "asin",
-    "atan",
-    "erf",
-    "derivative",
-    "taylor_series",
+    "Taylor", "variable", "constant",
+    "exp", "log", "sin", "cos", "tan", "sqrt", "power", "asin", "atan", "erf",
+    "derivative", "taylor_series",
 ]

@@ -26,10 +26,14 @@ def test_pending_guard_raises():
     y = Taylor.pending(1.0)
     with pytest.raises(RuntimeError):
         y.coeff(2)
+    y.bind_ode(y)
+    y.ensure(2)
+    with pytest.raises(RuntimeError):
+        y.bind_ode(y)
 
 
 def test_exact_rational_coefficients():
-    from taylorize.functions import tan
+    from taylorize.functions import painleve_I, tan
 
     c = tan(variable(Fraction(0))).ensure(7).c
     assert c == [
@@ -42,6 +46,8 @@ def test_exact_rational_coefficients():
         Fraction(0),
         Fraction(17, 315),
     ]
+    y, _v = painleve_I(variable(Fraction(0)), Fraction(1), Fraction(0))
+    assert y.ensure(4).c == [Fraction(1), Fraction(0), Fraction(3), Fraction(1, 6), Fraction(3)]
 
 
 def test_user_defined_function_from_ode():
@@ -85,7 +91,7 @@ def test_bessel_and_airy_mpmath():
 
 def test_numpy_dispatch():
     np = pytest.importorskip("numpy")
-    from taylorize.functions import exp
-
     y = np.exp(variable(0.0))
     assert isinstance(y, Taylor) and abs(y.coeff(3) - 1 / 6) < 1e-15
+    z = np.arctan(variable(0.0))
+    assert isinstance(z, Taylor) and abs(z.coeff(3) - (-1 / 3)) < 1e-15

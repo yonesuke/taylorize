@@ -58,34 +58,27 @@ def namespace_for(x0):
     return cmath if isinstance(x0, complex) else math
 
 
+_FRACTION_AT_ZERO = {
+    "exp": Fraction(1), "cos": Fraction(1), "cosh": Fraction(1),
+    "sin": Fraction(0), "sinh": Fraction(0), "tan": Fraction(0),
+    "tanh": Fraction(0), "atan": Fraction(0), "asin": Fraction(0), "erf": Fraction(0),
+}
+
+
 def _exact_fraction_initial(name: str, x0: Fraction):
     """Exact initial values that stay rational, or ``None``.
 
     A Fraction must never be silently demoted through ``math``: only a
     demonstrably rational value at the requested point is acceptable.
     """
-    zero, one = Fraction(0), Fraction(1)
-    at_zero = {
-        "exp": one,
-        "sin": zero,
-        "cos": one,
-        "sinh": zero,
-        "cosh": one,
-        "tan": zero,
-        "tanh": zero,
-        "atan": zero,
-        "asin": zero,
-        "erf": zero,
-    }
-    if x0 == 0 and name in at_zero:
-        return at_zero[name]
+    if x0 == 0 and name in _FRACTION_AT_ZERO:
+        return _FRACTION_AT_ZERO[name]
     if name == "log" and x0 == 1:
-        return zero
+        return Fraction(0)
     if name == "sqrt" and x0 >= 0:
-        num_root = math.isqrt(x0.numerator)
-        den_root = math.isqrt(x0.denominator)
-        if num_root * num_root == x0.numerator and den_root * den_root == x0.denominator:
-            return Fraction(num_root, den_root)
+        nr, dr = math.isqrt(x0.numerator), math.isqrt(x0.denominator)
+        if nr * nr == x0.numerator and dr * dr == x0.denominator:
+            return Fraction(nr, dr)
     return None
 
 

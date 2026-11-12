@@ -41,11 +41,8 @@ class Taylor:
         if isinstance(coeffs, Taylor):
             self.c: List[object] = list(coeffs.c)
             self._rule = coeffs._rule if _rule is None else _rule
-        elif isinstance(coeffs, (list, tuple)):
-            self.c = list(coeffs)
-            self._rule = _rule
         else:
-            self.c = [coeffs]
+            self.c = list(coeffs) if isinstance(coeffs, (list, tuple)) else [coeffs]
             self._rule = _rule
         if not self.c:
             raise ValueError("Taylor needs at least one coefficient.")
@@ -63,6 +60,8 @@ class Taylor:
 
     def bind_ode(self, dy: "Taylor") -> "Taylor":
         """Wire the ODE ``y' = dy`` to this series: ``c[k] = dy[k-1] / k``."""
+        if len(self.c) > 1:
+            raise RuntimeError("bind_ode() cannot re-wire a Taylor after coefficients are materialized.")
         self._rule = lambda k: dy.coeff(k - 1) / k
         return self
 
@@ -79,22 +78,15 @@ class Taylor:
 
     def ensure(self, n: int) -> "Taylor":
         """Materialize coefficients up to degree ``n`` (lazily if possible)."""
-        cur = len(self.c) - 1
-        if n > cur:
-            if self._rule is None:
-                self.c.extend([0] * (n - cur))
-            else:
-                for k in range(cur + 1, n + 1):
-                    self.c.append(self._rule(k))
+        for k in range(len(self.c), n + 1):
+            self.c.append(0 if self._rule is None else self._rule(k))
         return self
 
     def coeff(self, k: int):
         if k < 0:
             raise IndexError(k)
         if k >= len(self.c):
-            if self._rule is None:
-                return 0
-            self.ensure(k)
+            return 0 if self._rule is None else self.ensure(k).c[k]
         return self.c[k]
 
     def __getitem__(self, k):

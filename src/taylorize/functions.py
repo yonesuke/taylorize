@@ -25,59 +25,34 @@ from __future__ import annotations
 from .backends import backend_constant, eval_initial, special_initial
 from .core import Taylor
 
-__all__ = [
-    "define_ode_function",
-    "define_ode_system",
-    "FUNCTIONS",
-    "reciprocal",
-    "exp",
-    "log",
-    "sin",
-    "cos",
-    "sin_cos",
-    "sinh",
-    "cosh",
-    "sinh_cosh",
-    "tan",
-    "tanh",
-    "atan",
-    "asin",
-    "sqrt",
-    "power",
-    "erf",
-    "airy",
-    "airy_ai",
-    "airy_bi",
-    "bessel_j01",
-    "jacobi_elliptic",
-    "weierstrass_p",
-    "painleve_I",
-    "painleve_II",
-]
-
-
-# -- the two constructors -------------------------------------------------------
-def define_ode_function(rhs, init):
-    """Define ``y(x)`` by ``dy/dx = rhs(x, y)`` and ``y(x0) = init(x0)``.
+# -- the constructors -----------------------------------------------------------
+def define_ode_function(rhs, init, name: str | None = None):
+    """Define ``y(x)`` by ``dy/dx = rhs(x, y, *params)`` and ``y(x0) = init(x0, *params)``.
 
     ``rhs`` is an expression in the jets ``x`` and ``y`` built from core
-    ring operations (and other functions).  The returned callable maps a
-    scalar to a scalar (via ``init``'s backend) and a Taylor to a Taylor.
+    ring operations (and other functions).  ``init`` may be a callable or a
+    backend function name.  The returned callable maps a scalar to a scalar
+    (via ``init``'s backend) and a Taylor to a Taylor.
     """
+    if isinstance(init, str):
+        init_name = init
+        name = name or init_name
+        init = lambda x0, *params: eval_initial(init_name, x0, *params)
 
-    def func(x):
+    def func(x, *params):
         if not isinstance(x, Taylor):
-            return init(x)
-        y = Taylor.pending(init(x.primal))
-        y.bind_ode(rhs(x, y) * x.diff())
-        return y
+            return init(x, *params)
+        y = Taylor.pending(init(x.primal, *params))
+        return y.bind_ode(rhs(x, y, *params) * x.diff())
 
+    if name:
+        func.__name__ = name
     return func
 
 
-def define_ode_system(rhs_system, init_system):
-    """Define a coupled system ``y_i(x)`` by ``dy_i/dx = rhs_i(x, ys)``
-    and ``ys(x0) = init_system(x0)`` (a sequence of scalars)."""
+def define_ode_system(rhs_system, init_system, name: str | None = None):
+    """Define a coupled system ``y_i(x)`` by ``dy_i/dx = rhs_i(x, ys, *params)``
+    and ``ys(x0) = init_system(x0, *params)`` (a sequence of scalars)."""
 
     def func(x, *params):
         if not isinstance(x, Taylor):
@@ -88,79 +63,61 @@ def define_ode_system(rhs_system, init_system):
             y.bind_ode(dy * dx)
         return ys
 
+    if name:
+        func.__name__ = name
     return func
 
 
-def _named(func, name):
+def _project(system, idx: int, init, name: str):
+    """Project component ``idx`` from a coupled ODE system with scalar shortcut."""
+    if isinstance(init, str):
+        init_name = init
+        init = lambda x0, *params: eval_initial(init_name, x0, *params)
+
+    def func(x, *params):
+        return system(x, *params)[idx] if isinstance(x, Taylor) else init(x, *params)
+
     func.__name__ = name
     return func
 
 
-# -- elementary functions ---------------------------------------------------------
-reciprocal = _named(
-    define_ode_function(lambda x, y: -y * y, lambda x0: 1 / x0), "reciprocal"
-)
-exp = _named(define_ode_function(lambda x, y: y, lambda x0: eval_initial("exp", x0)), "exp")
-log = _named(define_ode_function(lambda x, y: 1 / x, lambda x0: eval_initial("log", x0)), "log")
+def _ivp2(x, y0, dy0, accel):
+    """Wire a second-order ODE ``y'' = accel(x, y)`` with explicit ``(y0, dy0)``."""
+    if not isinstance(x, Taylor):
+        return (y0, dy0)
+    y, v = Taylor.pending(y0), Taylor.pending(dy0)
+    dx = x.diff()
+    return y.bind_ode(v * dx), v.bind_ode(accel(x, y) * dx)
 
-sin_cos = _named(
-    define_ode_system(
-        lambda x, ys: [ys[1], -ys[0]],
-        lambda x0: [eval_initial("sin", x0), eval_initial("cos", x0)],
-    ),
+
+# -- elementary functions ---------------------------------------------------------
+reciprocal = define_ode_function(lambda x, y: -y * y, lambda x0: 1 / x0, "reciprocal")
+exp = define_ode_function(lambda x, y: y, "exp")
+log = define_ode_function(lambda x, y: 1 / x, "log")
+
+sin_cos = define_ode_system(
+    lambda x, ys: [ys[1], -ys[0]],
+    lambda x0: [eval_initial("sin", x0), eval_initial("cos", x0)],
     "sin_cos",
 )
+sin = _project(sin_cos, 0, "sin", "sin")
+cos = _project(sin_cos, 1, "cos", "cos")
 
-
-def sin(x):
-    if not isinstance(x, Taylor):
-        return eval_initial("sin", x)
-    return sin_cos(x)[0]
-
-
-def cos(x):
-    if not isinstance(x, Taylor):
-        return eval_initial("cos", x)
-    return sin_cos(x)[1]
-
-
-sinh_cosh = _named(
-    define_ode_system(
-        lambda x, ys: [ys[1], ys[0]],
-        lambda x0: [eval_initial("sinh", x0), eval_initial("cosh", x0)],
-    ),
+sinh_cosh = define_ode_system(
+    lambda x, ys: [ys[1], ys[0]],
+    lambda x0: [eval_initial("sinh", x0), eval_initial("cosh", x0)],
     "sinh_cosh",
 )
+sinh = _project(sinh_cosh, 0, "sinh", "sinh")
+cosh = _project(sinh_cosh, 1, "cosh", "cosh")
 
+tan = define_ode_function(lambda x, y: 1 + y * y, "tan")
+tanh = define_ode_function(lambda x, y: 1 - y * y, "tanh")
+atan = define_ode_function(lambda x, y: 1 / (1 + x * x), "atan")
+sqrt = define_ode_function(lambda x, y: 1 / (2 * y), "sqrt")
+asin = define_ode_function(lambda x, y: 1 / sqrt(1 - x * x), "asin")
 
-def sinh(x):
-    if not isinstance(x, Taylor):
-        return eval_initial("sinh", x)
-    return sinh_cosh(x)[0]
-
-
-def cosh(x):
-    if not isinstance(x, Taylor):
-        return eval_initial("cosh", x)
-    return sinh_cosh(x)[1]
-
-
-tan = _named(define_ode_function(lambda x, y: 1 + y * y, lambda x0: eval_initial("tan", x0)), "tan")
-tanh = _named(
-    define_ode_function(lambda x, y: 1 - y * y, lambda x0: eval_initial("tanh", x0)), "tanh"
-)
-atan = _named(
-    define_ode_function(lambda x, y: 1 / (1 + x * x), lambda x0: eval_initial("atan", x0)), "atan"
-)
-sqrt = _named(
-    define_ode_function(lambda x, y: 1 / (2 * y), lambda x0: eval_initial("sqrt", x0)), "sqrt"
-)
-asin = _named(
-    define_ode_function(
-        lambda x, y: 1 / sqrt(1 - x * x), lambda x0: eval_initial("asin", x0)
-    ),
-    "asin",
-)
+_scalar_power = define_ode_function(lambda x, y, p: p * y / x, lambda x0, p: x0 ** p, "power")
 
 
 def power(x, p):
@@ -169,66 +126,38 @@ def power(x, p):
         return exp(p * log(x))
     if isinstance(p, int):
         return x ** p
-    if not isinstance(x, Taylor):
-        return x ** p
-    y = Taylor.pending(x.primal ** p)
-    y.bind_ode((p * y / x) * x.diff())
-    return y
+    return _scalar_power(x, p)
 
 
 # -- special functions ------------------------------------------------------------
-def erf(x):
-    if not isinstance(x, Taylor):
-        return eval_initial("erf", x)
-    c = 2 / eval_initial("sqrt", backend_constant("pi", x.primal))
-    y = Taylor.pending(eval_initial("erf", x.primal))
-    y.bind_ode((c * exp(-(x * x))) * x.diff())
-    return y
+erf = define_ode_function(
+    lambda x, y: (2 / eval_initial("sqrt", backend_constant("pi", x.primal))) * exp(-(x * x)),
+    "erf",
+)
 
-
-airy = _named(
-    define_ode_system(
-        lambda x, ys: [ys[1], x * ys[0]],
-        lambda x0: [special_initial("airyai", x0), special_initial("airyaiprime", x0)],
-    ),
+airy = define_ode_system(
+    lambda x, ys: [ys[1], x * ys[0]],
+    lambda x0: [special_initial("airyai", x0), special_initial("airyaiprime", x0)],
     "airy",
 )
+airy_ai = _project(airy, 0, lambda x0: special_initial("airyai", x0), "airy_ai")
 
-
-def airy_ai(x):
-    if not isinstance(x, Taylor):
-        return special_initial("airyai", x)
-    return airy(x)[0]
-
-
-airy_bi_system = _named(
-    define_ode_system(
-        lambda x, ys: [ys[1], x * ys[0]],
-        lambda x0: [special_initial("airybi", x0), special_initial("airybiprime", x0)],
-    ),
+airy_bi_system = define_ode_system(
+    lambda x, ys: [ys[1], x * ys[0]],
+    lambda x0: [special_initial("airybi", x0), special_initial("airybiprime", x0)],
     "airy_bi_system",
 )
+airy_bi = _project(airy_bi_system, 0, lambda x0: special_initial("airybi", x0), "airy_bi")
 
-
-def airy_bi(x):
-    if not isinstance(x, Taylor):
-        return special_initial("airybi", x)
-    return airy_bi_system(x)[0]
-
-
-bessel_j01 = _named(
-    define_ode_system(
-        lambda x, ys: [-ys[1], ys[0] - ys[1] / x],
-        lambda x0: [special_initial("besselj", x0, 0), special_initial("besselj", x0, 1)],
-    ),
+bessel_j01 = define_ode_system(
+    lambda x, ys: [-ys[1], ys[0] - ys[1] / x],
+    lambda x0: [special_initial("besselj", x0, 0), special_initial("besselj", x0, 1)],
     "bessel_j01",
 )
 
-jacobi_elliptic = _named(
-    define_ode_system(
-        lambda x, ys, m: [ys[1] * ys[2], -ys[0] * ys[2], -m * ys[0] * ys[1]],
-        lambda x0, m: list(special_initial("ellip_sn_cn_dn", x0, m)),
-    ),
+jacobi_elliptic = define_ode_system(
+    lambda x, ys, m: [ys[1] * ys[2], -ys[0] * ys[2], -m * ys[0] * ys[1]],
+    lambda x0, m: list(special_initial("ellip_sn_cn_dn", x0, m)),
     "jacobi_elliptic",
 )
 
@@ -237,64 +166,27 @@ def weierstrass_p(x, u0, v0, g2):
     """Weierstrass ℘ as a system with *explicit* initial values at ``x0``:
     ``u' = v``, ``v' = 6u^2 - g2/2``.  Supplying (u0, v0) is the honest
     interface for a function with poles and no canonical value at 0."""
-    if not isinstance(x, Taylor):
-        return (u0, v0)
-    u = Taylor.pending(u0)
-    v = Taylor.pending(v0)
-    dx = x.diff()
-    u.bind_ode(v * dx)
-    v.bind_ode((6 * u * u - g2 / 2) * dx)
-    return u, v
+    return _ivp2(x, u0, v0, lambda x, u: 6 * u * u - g2 / 2)
 
 
 def painleve_I(x, y0, dy0):
     """P_I: ``y'' = 6y^2 + x``, with explicit initial values at ``x0``."""
-    if not isinstance(x, Taylor):
-        return (y0, dy0)
-    y = Taylor.pending(y0)
-    v = Taylor.pending(dy0)
-    dx = x.diff()
-    y.bind_ode(v * dx)
-    v.bind_ode((6 * y * y + x) * dx)
-    return y, v
+    return _ivp2(x, y0, dy0, lambda x, y: 6 * y * y + x)
 
 
 def painleve_II(x, y0, dy0, alpha=0):
     """P_II: ``y'' = 2y^3 + x y + alpha``, explicit initial values."""
-    if not isinstance(x, Taylor):
-        return (y0, dy0)
-    y = Taylor.pending(y0)
-    v = Taylor.pending(dy0)
-    dx = x.diff()
-    y.bind_ode(v * dx)
-    v.bind_ode((2 * y * y * y + x * y + alpha) * dx)
-    return y, v
+    return _ivp2(x, y0, dy0, lambda x, y: 2 * y * y * y + x * y + alpha)
 
 
-# -- registry + host-library dispatch ----------------------------------------------
+# -- registry + exports -----------------------------------------------------------
 FUNCTIONS = {
-    "reciprocal": reciprocal,
-    "exp": exp,
-    "log": log,
-    "sin": sin,
-    "cos": cos,
-    "sin_cos": sin_cos,
-    "sinh": sinh,
-    "cosh": cosh,
-    "sinh_cosh": sinh_cosh,
-    "tan": tan,
-    "tanh": tanh,
-    "atan": atan,
-    "asin": asin,
-    "sqrt": sqrt,
-    "power": power,
-    "erf": erf,
-    "airy": airy,
-    "airy_ai": airy_ai,
-    "airy_bi": airy_bi,
-    "bessel_j01": bessel_j01,
-    "jacobi_elliptic": jacobi_elliptic,
-    "weierstrass_p": weierstrass_p,
-    "painleve_I": painleve_I,
-    "painleve_II": painleve_II,
+    fn.__name__: fn
+    for fn in (
+        reciprocal, exp, log, sin, cos, sin_cos, sinh, cosh, sinh_cosh,
+        tan, tanh, atan, asin, sqrt, power, erf, airy, airy_ai, airy_bi,
+        bessel_j01, jacobi_elliptic, weierstrass_p, painleve_I, painleve_II,
+    )
 }
+
+__all__ = ["define_ode_function", "define_ode_system", "FUNCTIONS", *FUNCTIONS]
