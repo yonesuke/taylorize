@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "taylorize"
-version = "0.1.0"
+version = "0.0.3"
 description = "Lazy truncated Taylor series: non-commutative/skew power-series ring, higher-order AD, singular Fuchsian expansions, and arbitrary-precision ODE integration."
 readme = "README.md"
 requires-python = ">=3.9"

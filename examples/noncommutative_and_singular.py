@@ -1,4 +1,4 @@
-"""Advanced examples for taylorize 0.1.0:
+"""Advanced examples for taylorize 0.0.3:
 non-commutative Lie / Dyson expansions, skew pseudo-differential operators,
 Fuchsian singular-point expansions, and direct higher-order ODEs.
 

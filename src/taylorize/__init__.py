@@ -17,7 +17,7 @@ from .core import Derivation, Taylor, constant, variable
 from .functions import asin, atan, bessel_j0, cos, erf, exp, log, power, sin, sqrt, tan
 from .transforms import derivative, taylor_series
 
-__version__ = "0.1.0"
+__version__ = "0.0.3"
 
 __all__ = [
     "Taylor", "Derivation", "variable", "constant",
