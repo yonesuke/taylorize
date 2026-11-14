@@ -5,15 +5,16 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![publish](https://github.com/yonesuke/taylorize/actions/workflows/publish.yml/badge.svg)](https://github.com/yonesuke/taylorize/actions/workflows/publish.yml)
 
-Lazy truncated Taylor series for **higher-order automatic differentiation** and
-**arbitrary-precision Taylor-method ODE integration**.
+Lazy truncated Taylor series for **higher-order automatic differentiation**,
+**arbitrary-precision Taylor-method ODE integration**, and
+**non-commutative / skew formal power series**.
 
-`taylorize` represents a smooth function by its normalized Taylor coefficients
-`c[k] = x^(k)(0) / k!` and computes them **lazily**, so you can build an
-expression once and then ask for any order afterwards.
+`taylorize` represents a formal series `sum_{k>=0} c[k] h^k` (for smooth functions,
+`c[k] = x^(k)(0) / k!`) and computes coefficients **lazily**, so you can build an
+expression or recurrence once and query any order afterwards.
 
-> Status: **0.0.2 (pre-alpha seed)**, published on [PyPI](https://pypi.org/project/taylorize/).
-> The API is minimal and will change.
+> Status: **0.1.0 (pre-alpha)**, published on [PyPI](https://pypi.org/project/taylorize/).
+> The API is evolving.
 
 ## Install
 
@@ -58,25 +59,48 @@ val = mp.exp(mp.sin(x)).eval(mp.mpf("0.5"), order=60)
 print(abs(val - mp.exp(mp.sin(mp.mpf("0.5")))))  # < 1e-47
 ```
 
-See [`examples/basic.py`](examples/basic.py).
+Exact rational expansions at regular singular points, higher-order ODEs, and
+non-commutative / skew rings:
+
+```python
+from fractions import Fraction
+from taylorize import bessel_j0, variable
+from taylorize.functions import painleve_I
+
+# Fuchsian expansion of Bessel J_0 at the regular singular origin x = 0
+j0 = bessel_j0(variable(Fraction(0)))
+print([j0.coeff(k) for k in range(5)])  # [1, 0, -1/4, 0, 1/64]
+
+# Direct 2nd-order ODE (Painlevé I: y'' = 6y^2 + x) without auxiliary variables
+y = painleve_I(variable(Fraction(0)), Fraction(1), Fraction(0))
+print([y.coeff(k) for k in range(6)])  # [1, 0, 3, 1/6, 3, 1/10]
+```
+
+See [`examples/basic.py`](examples/basic.py) and
+[`examples/noncommutative_and_singular.py`](examples/noncommutative_and_singular.py).
 
 ## Architecture
 
-The core object is a lazy truncated power series in a nilpotent direction `h`:
+The core object `Taylor[T]` is a lazy formal power series over any (possibly
+non-commutative or skew) coefficient ring `T`:
 
 ```
 x(h) = c[0] + c[1] h + c[2] h^2 + ... + c[N] h^N
 ```
 
-- **`taylorize.core`** — Pure lazy power-series ring (`+`, `-`, `*`, `/`), Picard integration, and `Taylor.pending` / `bind_ode` wiring. Zero knowledge of elementary functions or coefficient backends.
-- **`taylorize.functions`** — Elementary and special functions (`exp`, `sin`, `tan`, `erf`, Airy, Bessel, Jacobi elliptic, Weierstrass $\wp$, Painlevé I/II) declared directly via the differential equations they satisfy (`define_ode_function`, `define_ode_system`).
+- **`taylorize.core`** — Pure lazy non-commutative / Ore-skew power-series ring with zero external dependencies:
+  - *Level 0 (Ring)*: `+`, `-`, `*`, `rdiv` / `ldiv`, `shift`, integer `**`, `compose`, optional `derivation`
+  - *Level 1 (Algebraic / Implicit)*: `Taylor.solve_algebraic` for `P(h, Y) = 0`
+  - *Level 2 (Liouville)*: `diff`, `euler_diff`, `integrate`, `exp_integrate_left` / `exp_integrate_right`, `log_diff_left` / `log_diff_right`
+  - *Level 3 (Holonomic / Fuchsian)*: `bind_euler_ode` for regular singular equations `I(theta) Y = RHS`
+  - *Level 4 (ODEs & Recurrences)*: `bind_ode(dy, order=...)` and universal `bind_recurrence`
+- **`taylorize.functions`** — Elementary and special functions (`exp`, `sin`, `tan`, `erf`, Airy, Bessel including singular `x0 = 0`, Jacobi elliptic, Weierstrass $\wp$, Painlevé I/II) declared via the differential equations they satisfy.
 - **`taylorize.backends`** — Resolves 0th-order initial values across `float`/`complex` (`math`/`cmath`/`scipy.special`), exact `Fraction`, arbitrary-precision `mpmath`, symbolic `sympy`, and `numpy`.
 - **`taylorize.transforms`** — Function transforms (`derivative`, `taylor_series`).
-- **`taylorize.interop`** — Host-library protocol dispatch (`__array_ufunc__`, `__torch_function__`).
+- **`taylorize.interop`** — Host-library protocol dispatch (`__array_ufunc__`, `__torch_function__`, `mpmath` import hook).
 
 ## Roadmap
 
-- Implicit / holonomic ODE layer for singular expansion points at the origin
 - Adaptive-step Taylor ODE solver
 - JAX `jvp` / jet interop
 

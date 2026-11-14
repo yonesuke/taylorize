@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "taylorize"
-version = "0.0.2"
-description = "Lazy truncated Taylor series: higher-order automatic differentiation and arbitrary-precision Taylor-method ODE integration."
+version = "0.1.0"
+description = "Lazy truncated Taylor series: non-commutative/skew power-series ring, higher-order AD, singular Fuchsian expansions, and arbitrary-precision ODE integration."
 readme = "README.md"
 requires-python = ">=3.9"
 license = "MIT"

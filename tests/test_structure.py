@@ -46,7 +46,7 @@ def test_exact_rational_coefficients():
         Fraction(0),
         Fraction(17, 315),
     ]
-    y, _v = painleve_I(variable(Fraction(0)), Fraction(1), Fraction(0))
+    y = painleve_I(variable(Fraction(0)), Fraction(1), Fraction(0))
     assert y.ensure(4).c == [Fraction(1), Fraction(0), Fraction(3), Fraction(1, 6), Fraction(3)]
 
 

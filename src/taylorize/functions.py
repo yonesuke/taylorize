@@ -82,12 +82,16 @@ def _project(system, idx: int, init, name: str):
 
 
 def _ivp2(x, y0, dy0, accel):
-    """Wire a second-order ODE ``y'' = accel(x, y)`` with explicit ``(y0, dy0)``."""
+    """Wire a second-order ODE ``y''(x) = accel(x, y)`` with explicit ``(y0, dy0)``.
+
+    Uses Level-4 ``bind_ode(..., order=2)`` directly with no auxiliary state.
+    """
     if not isinstance(x, Taylor):
-        return (y0, dy0)
-    y, v = Taylor.pending(y0), Taylor.pending(dy0)
+        return y0
+    y = Taylor.pending(y0, dy0)
     dx = x.diff()
-    return y.bind_ode(v * dx), v.bind_ode(accel(x, y) * dx)
+    ddx = dx.diff()
+    return y.bind_ode(accel(x, y) * (dx * dx) + y.diff() * ddx, order=2)
 
 
 # -- elementary functions ---------------------------------------------------------
@@ -149,11 +153,43 @@ airy_bi_system = define_ode_system(
 )
 airy_bi = _project(airy_bi_system, 0, lambda x0: special_initial("airybi", x0), "airy_bi")
 
-bessel_j01 = define_ode_system(
+
+def _bessel_j0_at_zero(zero_like):
+    """Fuchsian expansion of J_0(u) around the regular singular point u = 0:
+    ``theta^2 J_0 = -u^2 J_0``."""
+    one = zero_like * 0 + 1
+    y = Taylor.pending(one)
+    return y.bind_euler_ode(lambda k: k * k, -(y.shift(2)))
+
+
+_bessel_j01_regular = define_ode_system(
     lambda x, ys: [-ys[1], ys[0] - ys[1] / x],
     lambda x0: [special_initial("besselj", x0, 0), special_initial("besselj", x0, 1)],
     "bessel_j01",
 )
+
+
+def bessel_j01(x):
+    """Bessel functions ``(J_0(x), J_1(x))``, including regular-singular ``x0 == 0``."""
+    if not isinstance(x, Taylor):
+        if x == 0:
+            return [x * 0 + 1, x * 0]
+        return [special_initial("besselj", x, 0), special_initial("besselj", x, 1)]
+    if x.primal == 0:
+        j0_std = _bessel_j0_at_zero(x.primal)
+        j1_std = -j0_std.diff()
+        return [j0_std.compose(x), j1_std.compose(x)]
+    return _bessel_j01_regular(x)
+
+
+def bessel_j0(x):
+    """Bessel function ``J_0(x)``, including regular-singular ``x0 == 0``."""
+    if not isinstance(x, Taylor):
+        return x * 0 + 1 if x == 0 else special_initial("besselj", x, 0)
+    if x.primal == 0:
+        return _bessel_j0_at_zero(x.primal).compose(x)
+    return _bessel_j01_regular(x)[0]
+
 
 jacobi_elliptic = define_ode_system(
     lambda x, ys, m: [ys[1] * ys[2], -ys[0] * ys[2], -m * ys[0] * ys[1]],
@@ -163,9 +199,8 @@ jacobi_elliptic = define_ode_system(
 
 
 def weierstrass_p(x, u0, v0, g2):
-    """Weierstrass ℘ as a system with *explicit* initial values at ``x0``:
-    ``u' = v``, ``v' = 6u^2 - g2/2``.  Supplying (u0, v0) is the honest
-    interface for a function with poles and no canonical value at 0."""
+    """Weierstrass ℘ with explicit initial values ``(u0, v0)`` at ``x0``:
+    ``u'' = 6u^2 - g2/2``."""
     return _ivp2(x, u0, v0, lambda x, u: 6 * u * u - g2 / 2)
 
 
@@ -185,7 +220,7 @@ FUNCTIONS = {
     for fn in (
         reciprocal, exp, log, sin, cos, sin_cos, sinh, cosh, sinh_cosh,
         tan, tanh, atan, asin, sqrt, power, erf, airy, airy_ai, airy_bi,
-        bessel_j01, jacobi_elliptic, weierstrass_p, painleve_I, painleve_II,
+        bessel_j0, bessel_j01, jacobi_elliptic, weierstrass_p, painleve_I, painleve_II,
     )
 }
 
