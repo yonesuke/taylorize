@@ -15,16 +15,44 @@ from .functions import FUNCTIONS
 __all__ = ["dispatched_names", "_DISPATCH"]
 
 _DISPATCH_NAMES = (
-    "exp", "log", "sqrt", "sin", "cos", "tan",
-    "sinh", "cosh", "tanh", "asin", "atan", "power", "erf",
+    "exp", "expm1", "log", "log1p", "sqrt",
+    "sin", "cos", "tan", "sinh", "cosh", "tanh",
+    "asin", "acos", "atan", "asinh", "acosh", "atanh",
+    "power",
+    "erf", "erfc", "erfi", "dawsn",
+    "ellipk", "ellipe", "si", "ci", "spence",
+    "hyp2f1", "hyp1f1",
 )
 _DISPATCH: dict = {name: FUNCTIONS[name] for name in _DISPATCH_NAMES}
 _DISPATCH.update(
     {
         "arcsin": FUNCTIONS["asin"],
+        "arccos": FUNCTIONS["acos"],
         "arctan": FUNCTIONS["atan"],
+        "arcsinh": FUNCTIONS["asinh"],
+        "arccosh": FUNCTIONS["acosh"],
+        "arctanh": FUNCTIONS["atanh"],
+        "fresnels": FUNCTIONS["fresnel_s"],
+        "fresnelc": FUNCTIONS["fresnel_c"],
         "airyai": FUNCTIONS["airy_ai"],
         "airybi": FUNCTIONS["airy_bi"],
+        "j0": FUNCTIONS["bessel_j0"],
+        "jv": FUNCTIONS["bessel_j"],
+        "yv": FUNCTIONS["bessel_y"],
+        "iv": FUNCTIONS["bessel_i"],
+        "kv": FUNCTIONS["bessel_k"],
+        "besselj": FUNCTIONS["bessel_j"],
+        "bessely": FUNCTIONS["bessel_y"],
+        "besseli": FUNCTIONS["bessel_i"],
+        "besselk": FUNCTIONS["bessel_k"],
+        "eval_legendre": FUNCTIONS["legendre"],
+        "legendre": FUNCTIONS["legendre"],
+        "eval_chebyt": FUNCTIONS["chebyt"],
+        "chebyt": FUNCTIONS["chebyt"],
+        "eval_hermite": FUNCTIONS["hermite"],
+        "hermite": FUNCTIONS["hermite"],
+        "eval_laguerre": FUNCTIONS["laguerre"],
+        "laguerre": FUNCTIONS["laguerre"],
     }
 )
 _MPMATH_PATCHED = False
@@ -43,7 +71,9 @@ def _patch_mpmath(mpmath=None) -> None:
         orig = getattr(mp, name, None)
         if callable(orig):
             wrapped = (
-                lambda f, o: lambda x, *a, **kw: f(x, *a) if isinstance(x, Taylor) else o(x, *a, **kw)
+                lambda f, o: lambda *args, **kw: (
+                    f(*args) if any(isinstance(a, Taylor) for a in args) else o(*args, **kw)
+                )
             )(fn, orig)
             setattr(mp, name, wrapped)
             if hasattr(mpmath, name):

@@ -59,9 +59,12 @@ def namespace_for(x0):
 
 
 _FRACTION_AT_ZERO = {
-    "exp": Fraction(1), "cos": Fraction(1), "cosh": Fraction(1),
+    "exp": Fraction(1), "expm1": Fraction(0), "log1p": Fraction(0),
+    "cos": Fraction(1), "cosh": Fraction(1),
     "sin": Fraction(0), "sinh": Fraction(0), "tan": Fraction(0),
-    "tanh": Fraction(0), "atan": Fraction(0), "asin": Fraction(0), "erf": Fraction(0),
+    "tanh": Fraction(0), "atan": Fraction(0), "asin": Fraction(0),
+    "asinh": Fraction(0), "atanh": Fraction(0),
+    "erf": Fraction(0), "erfc": Fraction(1), "erfi": Fraction(0),
 }
 
 
@@ -102,6 +105,11 @@ def eval_initial(name: str, x0, *extra):
     fn = getattr(ns, name, None)
     if fn is not None:
         return fn(x0, *extra)
+    if isinstance(x0, complex):
+        if name == "expm1":
+            return cmath.exp(x0) - 1
+        if name == "log1p":
+            return cmath.log(1 + x0)
     method = getattr(x0, name, None)
     if callable(method):
         return method(*extra)
@@ -114,7 +122,7 @@ def eval_initial(name: str, x0, *extra):
 
 def special_initial(kind: str, x0, *params):
     """Initial values for special functions whose calling conventions
-    differ per backend (Bessel, Airy, Jacobi elliptic).
+    differ per backend (Bessel, Airy, Jacobi elliptic, Fresnel, etc.).
 
     Resolution order: the coefficient's own backend first, then
     ``scipy.special`` for plain float/complex coefficients.
@@ -129,6 +137,24 @@ def special_initial(kind: str, x0, *params):
             from scipy.special import jv
 
             return jv(n, x0)
+    elif kind in ("besselj_pair", "bessely_pair", "besseli_pair", "besselk_pair"):
+        (v,) = params
+        mp_name = kind.split("_")[0]  # besselj / bessely / besseli / besselk
+        fn = getattr(ns, mp_name, None)
+        if fn is not None:
+            val = fn(v, x0)
+            vm1 = fn(v - 1, x0)
+            if mp_name == "besselk":
+                der = -vm1 - (v / x0) * val
+            else:
+                der = vm1 - (v / x0) * val
+            return (val, der)
+        if isinstance(x0, (float, complex)):
+            import scipy.special as sp
+
+            val_fn = {"besselj": sp.jv, "bessely": sp.yv, "besseli": sp.iv, "besselk": sp.kv}[mp_name]
+            der_fn = {"besselj": sp.jvp, "bessely": sp.yvp, "besseli": sp.ivp, "besselk": sp.kvp}[mp_name]
+            return (val_fn(v, x0), der_fn(v, x0))
     elif kind in ("airyai", "airyaiprime", "airybi", "airybiprime"):
         base = kind[:6]  # "airyai" or "airybi"
         idx = 0 if kind == base else 1  # scipy .airy() order: Ai, Ai', Bi, Bi'
@@ -160,6 +186,139 @@ def special_initial(kind: str, x0, *params):
 
             sn, cn, dn, _ph = ellipj(x0, m)
             return (sn, cn, dn)
+    elif kind == "ellip_ke":
+        fk = getattr(ns, "ellipk", None)
+        fe = getattr(ns, "ellipe", None)
+        if fk is not None and fe is not None:
+            return (fk(x0), fe(x0))
+        if isinstance(x0, (float, complex)):
+            from scipy.special import ellipe, ellipk
+
+            return (ellipk(x0), ellipe(x0))
+    elif kind == "erfi":
+        if x0 == 0:
+            return x0 * 0
+        fn = getattr(ns, "erfi", None)
+        if fn is not None:
+            return fn(x0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import erfi
+
+            return erfi(x0)
+    elif kind == "dawsn":
+        if x0 == 0:
+            return x0 * 0
+        fn = getattr(ns, "dawsn", None)
+        if fn is not None:
+            return fn(x0)
+        erfi_fn = getattr(ns, "erfi", None)
+        if erfi_fn is not None:
+            pi_val = backend_constant("pi", x0)
+            return ns.sqrt(pi_val) / 2 * ns.exp(-(x0 * x0)) * erfi_fn(x0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import dawsn
+
+            return dawsn(x0)
+    elif kind == "fresnel":
+        if x0 == 0:
+            return (x0 * 0, x0 * 0)
+        fs, fc = getattr(ns, "fresnels", None), getattr(ns, "fresnelc", None)
+        if fs is not None and fc is not None:
+            return (fs(x0), fc(x0))
+        if isinstance(x0, (float, complex)):
+            from scipy.special import fresnel
+
+            return fresnel(x0)
+    elif kind in ("si", "ci"):
+        if kind == "si" and x0 == 0:
+            return x0 * 0
+        fn = getattr(ns, kind, None)
+        if fn is not None:
+            return fn(x0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import sici
+
+            s, c = sici(x0)
+            return s if kind == "si" else c
+    elif kind == "dilog":
+        if x0 == 0:
+            return x0 * 0
+        fn = getattr(ns, "polylog", None)
+        if fn is not None:
+            return fn(2, x0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import spence
+
+            return spence(1 - x0)
+    elif kind == "hyp2f1_pair":
+        a, b, c = params
+        fn = getattr(ns, "hyp2f1", None)
+        if fn is not None:
+            return (fn(a, b, c, x0), fn(a + 1, b + 1, c + 1, x0) * a * b / c)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import hyp2f1
+
+            return (hyp2f1(a, b, c, x0), hyp2f1(a + 1, b + 1, c + 1, x0) * a * b / c)
+    elif kind == "hyp1f1_pair":
+        a, c = params
+        fn = getattr(ns, "hyp1f1", None)
+        if fn is not None:
+            return (fn(a, c, x0), fn(a + 1, c + 1, x0) * a / c)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import hyp1f1
+
+            return (hyp1f1(a, c, x0), hyp1f1(a + 1, c + 1, x0) * a / c)
+    elif kind == "legendre_pair":
+        (n,) = params
+        fn = getattr(ns, "legendre", None)
+        if fn is not None:
+            p0 = fn(n, x0)
+            if n == 0:
+                return (p0, x0 * 0)
+            pm = fn(n - 1, x0)
+            return (p0, n * (x0 * p0 - pm) / (x0 * x0 - 1))
+        if isinstance(x0, (float, complex)):
+            from scipy.special import eval_legendre
+
+            p0 = eval_legendre(n, x0)
+            if n == 0:
+                return (p0, x0 * 0)
+            pm = eval_legendre(n - 1, x0)
+            return (p0, n * (x0 * p0 - pm) / (x0 * x0 - 1))
+    elif kind == "chebyt_pair":
+        (n,) = params
+        fn = getattr(ns, "chebyt", None)
+        if fn is not None:
+            t0 = fn(n, x0)
+            if n == 0:
+                return (t0, x0 * 0)
+            tm = fn(n - 1, x0)
+            return (t0, n * (x0 * t0 - tm) / (x0 * x0 - 1))
+        if isinstance(x0, (float, complex)):
+            from scipy.special import eval_chebyt, eval_chebyu
+
+            return (eval_chebyt(n, x0), n * eval_chebyu(n - 1, x0) if n != 0 else x0 * 0)
+    elif kind == "hermite_pair":
+        (n,) = params
+        fn = getattr(ns, "hermite", None)
+        if fn is not None:
+            return (fn(n, x0), 2 * n * fn(n - 1, x0) if n != 0 else x0 * 0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import eval_hermite
+
+            return (eval_hermite(n, x0), 2 * n * eval_hermite(n - 1, x0) if n != 0 else x0 * 0)
+    elif kind == "laguerre_pair":
+        (n,) = params
+        fn = getattr(ns, "laguerre", None)
+        if fn is not None:
+            try:
+                return (fn(n, 0, x0), -fn(n - 1, 1, x0) if n != 0 else x0 * 0)
+            except TypeError:
+                return (fn(n, x0), -getattr(ns, "assoc_laguerre")(n - 1, 1, x0) if n != 0 else x0 * 0)
+        if isinstance(x0, (float, complex)):
+            from scipy.special import eval_genlaguerre, eval_laguerre
+
+            return (eval_laguerre(n, x0), -eval_genlaguerre(n - 1, 1, x0) if n != 0 else x0 * 0)
     raise AttributeError(
         f"backend {ns!r} does not provide {kind!r} initial values at {x0!r}; "
         f"use mpmath/sympy coefficients, install scipy for float coefficients, "
