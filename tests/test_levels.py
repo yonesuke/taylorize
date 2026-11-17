@@ -286,3 +286,36 @@ def test_level4_high_order_odes():
         Fraction(1, 24),
         Fraction(1, 120),
     ]
+
+
+def test_level0_mul_zero_short_circuit_causal_recurrence():
+    # Standard ring: P = y + y^2 P' - y * P^2 with P(0) = 0 => P(y) = y / (1 - y)
+    y = variable(Fraction(0))
+    P = Taylor.pending(Fraction(0))
+    P_rhs = y + P.euler_diff().shift(1) - y * (P * P)
+    P.bind_recurrence(lambda k: P_rhs.coeff(k))
+    assert [P.coeff(k) for k in range(6)] == [
+        Fraction(0),
+        Fraction(1),
+        Fraction(1),
+        Fraction(1),
+        Fraction(1),
+        Fraction(1),
+    ]
+
+    # Skew ring: S = h * x + S * S with S(0) = 0 (causal in h because S(0) == 0)
+    sp = pytest.importorskip("sympy")
+    x = sp.Symbol("x")
+    deriv = lambda expr: sp.diff(expr, x)
+    h_x = Taylor([sp.Integer(0), x], derivation=deriv)
+    S = Taylor.pending(sp.Integer(0), derivation=deriv)
+    S_rhs = h_x + S * S
+    S.bind_recurrence(lambda k: S_rhs.coeff(k))
+    # S = h*x + h^2*x^2 + h^3*(2*x^3 - x) + ...
+    assert [sp.simplify(S.coeff(k)) for k in range(4)] == [
+        sp.Integer(0),
+        x,
+        x**2,
+        2 * x**3 - x,
+    ]
+

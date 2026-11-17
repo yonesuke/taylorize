@@ -229,30 +229,61 @@ class Taylor(Generic[T]):
             return self * Taylor([other], derivation=self._derivation)  # type: ignore[list-item]
 
         delta = _merge_derivation(self._derivation, other._derivation)
+        c0 = self.coeff(0) * other.coeff(0)  # type: ignore[operator]
         if delta is None:
+            def mul_rule(k: int) -> T:
+                j_min = 0 if other._rule is not None else max(0, k - len(other.c) + 1)
+                j_max = k if self._rule is not None else min(k, len(self.c) - 1)
+                terms: list[T] = []
+                for j in range(j_min, j_max + 1):
+                    if j < len(self.c) and _is_zero(self.c[j]):
+                        continue
+                    if k - j < len(other.c) and _is_zero(other.c[k - j]):
+                        continue
+                    aj = self.coeff(j)
+                    if _is_zero(aj):
+                        continue
+                    bj = other.coeff(k - j)
+                    if _is_zero(bj):
+                        continue
+                    terms.append(aj * bj)  # type: ignore[operator]
+                return _sum(terms, zero=c0 * 0)  # type: ignore[operator]
+
             return Taylor(
-                [self.coeff(0) * other.coeff(0)],  # type: ignore[operator]
-                _rule=lambda k: _sum(
-                    (self.coeff(j) * other.coeff(k - j) for j in range(k + 1)),  # type: ignore[misc]
-                    zero=self.zero_elem,
-                ),
+                [c0],
+                _rule=mul_rule,
             )
 
         def skew_rule(k: int) -> T:
             terms: list[T] = []
-            for j in range(k + 1):
+            j_max = k if self._rule is not None else min(k, len(self.c) - 1)
+            for j in range(j_max + 1):
+                if j < len(self.c) and _is_zero(self.c[j]):
+                    continue
+                if j == k and _is_zero(other.c[0]):
+                    continue
                 aj = self.coeff(j)
-                for m in range(k - j + 1):
+                if _is_zero(aj):
+                    continue
+                m_min = 0 if other._rule is not None else max(0, k - j - len(other.c) + 1)
+                for m in range(m_min, k - j + 1):
                     binom = ((-1) ** m) * math.comb(j + m - 1, m) if j > 0 else (1 if m == 0 else 0)
                     if binom != 0:
-                        bm = other.coeff(k - j - m)
+                        idx_b = k - j - m
+                        if idx_b < len(other.c) and _is_zero(other.c[idx_b]):
+                            continue
+                        bm = other.coeff(idx_b)
+                        if _is_zero(bm):
+                            continue
                         for _ in range(m):
                             bm = delta(bm)
+                        if _is_zero(bm):
+                            continue
                         terms.append(aj * bm * binom)  # type: ignore[operator]
-            return _sum(terms, zero=self.zero_elem)
+            return _sum(terms, zero=c0 * 0)  # type: ignore[operator]
 
         return Taylor(
-            [self.coeff(0) * other.coeff(0)],  # type: ignore[operator]
+            [c0],
             _rule=skew_rule,
             derivation=delta,
         )
